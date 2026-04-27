@@ -2,49 +2,49 @@
 
 Anonymous planning poker for your team: create a room, share the secret URL, pick a display name, and estimate with a Fibonacci deck plus `?`. Anyone in the room can **Reveal** (with a shared **3 → 2 → 1** countdown) or start a **New round**. No accounts.
 
-## Local development
+The UI and realtime server run in **one Node process**, so you only **deploy once** (e.g. Railway, Fly.io, Render).
 
-1. Install dependencies: `npm install`
-2. Run the Vite app and PartyKit dev server together:
+## Run locally
+
+**Development (hot reload UI + API):**
 
 ```bash
+npm install
 npm run dev
 ```
 
-3. Open the URL Vite prints (usually `http://localhost:5173`). Create a room and join.
+Open **http://localhost:5173** (Vite). WebSocket calls go to **`/ws/...`** on the same origin and are proxied to the API on port **8080**.
 
-The WebSocket server defaults to `127.0.0.1:1999` (PartyKit dev). Override with `VITE_PARTYKIT_HOST` in `.env.local` if needed.
+**Production-style (single origin, what you ship):**
 
-## Deploy
+```bash
+npm run build && npm start
+```
 
-### Frontend (Vercel)
+Open **http://localhost:8080** — static app and WebSockets share one host/port.
 
-1. Connect this repo to [Vercel](https://vercel.com/).
-2. Framework preset: **Other** (static Vite build), or use defaults — `vercel.json` sets `npm run build` and output `dist`.
-3. Add an environment variable for production builds:
+Environment:
 
-| Name | Value |
-|------|--------|
-| `VITE_PARTYKIT_HOST` | Your PartyKit host (below), **without** `https://` or `wss://` — e.g. `my-party.myaccount.partykit.dev` |
+| Variable | Default | Notes |
+|---------|---------|--------|
+| `PORT` | `8080` | HTTP + WebSocket server (hosts set this for you). |
 
-Redeploy after changing env vars.
+## Deploy one service
 
-### Realtime (PartyKit)
+1. Build: `npm run build` (outputs `dist/`).
+2. Start: `npm start` (runs `tsx server/index.ts`).
+3. Bind to the platform’s HTTP port (`PORT`). The app serves `dist/` and upgrades **`/ws/:roomId`** to WebSockets.
 
-The collaborative room runs on PartyKit (separate from Vercel).
+Works with **Railway**, **Fly.io**, **Render**, **Google Cloud Run** (enable WebSockets), etc.
 
-1. Log in: `npx partykit login`
-2. Deploy: `npm run party:deploy` (or `npx partykit deploy`)
-3. Note the deployed host PartyKit prints; use it as `VITE_PARTYKIT_HOST` on Vercel.
-
-For logs: `npx partykit tail`.
+**Not ideal on Vercel serverless:** this design expects a **long‑running Node** process. Prefer a **container / VM / PaaS with a persistent server** above.
 
 ## Project layout
 
-- `src/` — React (Vite) client
-- `party/` — PartyKit room server (`party/index.ts`)
-- `shared/` — Types shared between client and server shape (JSON payloads)
+- `src/` — React (Vite) client  
+- `server/` — Express + `ws` (`/ws/:roomId`)  
+- `shared/` — Deck constants + shared JSON types  
 
 ## Privacy
 
-Rooms are unguessable URLs (random id). Only people with the link can join.
+Rooms use unguessable URLs (random id). Only people with the link can join.

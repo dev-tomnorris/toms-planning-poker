@@ -1,13 +1,6 @@
 import confetti from "canvas-confetti";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import usePartySocket from "partysocket/react";
 import type { ClientState } from "../../shared/clientState.ts";
 import { DECK } from "../constants/deck.ts";
 import {
@@ -16,7 +9,7 @@ import {
   modeVote,
 } from "../lib/consensus.ts";
 import { hueFromId } from "../lib/hueFromId.ts";
-import { partyKitHost } from "../lib/partyKitHost.ts";
+import { useRoomWebSocket } from "../lib/useRoomWebSocket.ts";
 import {
   getSoundsEnabled,
   playRevealPop,
@@ -43,7 +36,6 @@ export function PokerSession({
   displayName,
   onChangeName,
 }: Props) {
-  const host = partyKitHost();
   const [state, setState] = useState<ClientState | null>(null);
   /** Local selection while votes are hidden on the server */
   const [picked, setPicked] = useState<string | null>(null);
@@ -54,9 +46,9 @@ export function PokerSession({
 
   const prevPhase = useRef<string | undefined>(undefined);
 
-  const onServerMessage = useCallback((event: MessageEvent) => {
+  const onServerMessage = useCallback((raw: string) => {
     try {
-      const data = JSON.parse(event.data as string) as {
+      const data = JSON.parse(raw) as {
         type: string;
         state?: ClientState;
       };
@@ -71,37 +63,23 @@ export function PokerSession({
     }
   }, []);
 
-  const socketOptions = useMemo(
-    () => ({
-      host,
-      room: roomId,
-      onMessage: onServerMessage,
-    }),
-    [host, roomId, onServerMessage],
-  );
-
-  const socket = usePartySocket(socketOptions);
+  const { readyState, send } = useRoomWebSocket(roomId, onServerMessage);
 
   const sendJoin = useCallback(() => {
-    socket.send(
+    send(
       JSON.stringify({
         type: "join",
         participantId,
         name: displayName,
       }),
     );
-  }, [socket, participantId, displayName]);
+  }, [send, participantId, displayName]);
 
   useEffect(() => {
-    function onOpen() {
+    if (readyState === WebSocket.OPEN) {
       sendJoin();
     }
-    socket.addEventListener("open", onOpen);
-    if (socket.readyState === WebSocket.OPEN) {
-      sendJoin();
-    }
-    return () => socket.removeEventListener("open", onOpen);
-  }, [socket, sendJoin]);
+  }, [readyState, sendJoin]);
 
   useEffect(() => {
     applyTheme(theme);
@@ -146,7 +124,7 @@ export function PokerSession({
 
   const sendVote = (value: string) => {
     setPicked(value);
-    socket.send(
+    send(
       JSON.stringify({
         type: "vote",
         participantId,
@@ -156,15 +134,15 @@ export function PokerSession({
   };
 
   const sendReveal = () => {
-    socket.send(JSON.stringify({ type: "reveal", participantId }));
+    send(JSON.stringify({ type: "reveal", participantId }));
   };
 
   const sendNewRound = () => {
-    socket.send(JSON.stringify({ type: "new_round", participantId }));
+    send(JSON.stringify({ type: "new_round", participantId }));
   };
 
   const sendStory = (title: string) => {
-    socket.send(
+    send(
       JSON.stringify({
         type: "set_story",
         participantId,
@@ -194,8 +172,6 @@ export function PokerSession({
     revealed && state?.votes ? modeVote(state.votes) : null;
   const avg =
     revealed && state?.votes ? averageNumeric(state.votes) : null;
-
-  void roomId;
 
   return (
     <main className="page poker">
@@ -258,9 +234,9 @@ export function PokerSession({
             <span className="pill ok">Everyone voted</span>
           ) : null}
           <span
-            className={`pill ${socket.readyState === WebSocket.OPEN ? "ok" : "warn"}`}
+            className={`pill ${readyState === WebSocket.OPEN ? "ok" : "warn"}`}
           >
-            {socket.readyState === WebSocket.OPEN ? "Live" : "Connecting…"}
+            {readyState === WebSocket.OPEN ? "Live" : "Connecting…"}
           </span>
         </div>
         <ul className="participant-list">
@@ -305,7 +281,7 @@ export function PokerSession({
               key={card}
               type="button"
               className={`card-btn ${votePhase && picked === card ? "selected" : ""}`}
-              disabled={!votePhase || socket.readyState !== WebSocket.OPEN}
+              disabled={!votePhase || readyState !== WebSocket.OPEN}
               onClick={() => sendVote(card)}
               title={card === "?" ? "Unsure / need discussion" : undefined}
             >
@@ -319,7 +295,7 @@ export function PokerSession({
         <button
           type="button"
           className="btn primary"
-          disabled={!votePhase || socket.readyState !== WebSocket.OPEN}
+          disabled={!votePhase || readyState !== WebSocket.OPEN}
           onClick={sendReveal}
         >
           Reveal
@@ -327,7 +303,7 @@ export function PokerSession({
         <button
           type="button"
           className="btn"
-          disabled={!revealed || socket.readyState !== WebSocket.OPEN}
+          disabled={!revealed || readyState !== WebSocket.OPEN}
           onClick={sendNewRound}
         >
           New round

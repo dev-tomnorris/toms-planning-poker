@@ -1,5 +1,0 @@
-{
-  "name": "toms-planning-poker",
-  "main": "party/index.ts",
-  "compatibilityDate": "2024-11-01"
-}
