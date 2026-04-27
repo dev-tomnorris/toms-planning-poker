@@ -1,6 +1,5 @@
 function numericValue(v: string): number | null {
-  if (v === "?") return null;
-  if (v === "½") return 0.5;
+  if (v === "?" || v === "coffee") return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }
@@ -11,6 +10,15 @@ export function isUnanimous(votes: Record<string, string>): boolean {
   if (vals.length <= 1) return false;
   const first = vals[0];
   return vals.every((v) => v === first);
+}
+
+/** Confetti when everyone agrees on a numeric estimate or all picked "?"; not for unanimous "coffee". */
+export function isUnanimousCelebration(votes: Record<string, string>): boolean {
+  if (!isUnanimous(votes)) return false;
+  const v = Object.values(votes)[0];
+  if (v === "coffee") return false;
+  if (v === "?") return true;
+  return numericValue(v) !== null;
 }
 
 export function modeVote(votes: Record<string, string>): string | null {

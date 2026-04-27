@@ -2,10 +2,14 @@ import confetti from "canvas-confetti";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { ClientState } from "../../shared/clientState.ts";
-import { DECK } from "../constants/deck.ts";
+import {
+  DECK_POINT_CARDS,
+  DECK_SPECIALS,
+} from "../constants/deck.ts";
+import { cardDisplayLabel } from "../lib/cardLabel.ts";
 import {
   averageNumeric,
-  isUnanimous,
+  isUnanimousCelebration,
   modeVote,
 } from "../lib/consensus.ts";
 import { hueFromId } from "../lib/hueFromId.ts";
@@ -22,6 +26,7 @@ import {
   setStoredTheme,
 } from "../lib/theme.ts";
 import type { Theme } from "../lib/theme.ts";
+import { BootLine } from "./BootLine.tsx";
 
 type Props = {
   roomId: string;
@@ -104,7 +109,7 @@ export function PokerSession({
       prevPhase.current !== "revealed" &&
       phase === "revealed" &&
       votes &&
-      isUnanimous(votes)
+      isUnanimousCelebration(votes)
     ) {
       playRevealPop();
       void confetti({
@@ -173,6 +178,8 @@ export function PokerSession({
   const avg =
     revealed && state?.votes ? averageNumeric(state.votes) : null;
 
+  const modeDisplay = mode != null ? cardDisplayLabel(mode) : null;
+
   return (
     <main className="page poker">
       <header className="poker-toolbar">
@@ -196,15 +203,24 @@ export function PokerSession({
           <button
             type="button"
             className="btn ghost sm"
-            onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+            onClick={() =>
+              setTheme((t) => (t === "terminal" ? "paper" : "terminal"))
+            }
+            title={
+              theme === "terminal"
+                ? "Switch to amber paper theme"
+                : "Switch to green terminal theme"
+            }
           >
-            {theme === "dark" ? "Light" : "Dark"}
+            {theme === "terminal" ? "Paper" : "CRT"}
           </button>
           <button type="button" className="btn ghost sm" onClick={onChangeName}>
             Change name
           </button>
         </div>
       </header>
+
+      <BootLine key={roomId} />
 
       <section className="story-panel">
         <label className="field inline">
@@ -271,21 +287,38 @@ export function PokerSession({
       <section className="deck-section">
         <h2 className="section-title">Your vote</h2>
         <p className="deck-hint muted">
-          Pick a card. Others only see that you voted until reveal.&nbsp;
-          <abbr title="Need clarification or more discussion">?</abbr> means
-          unsure — use it freely.
+          Fibonacci points (0–89). <abbr title="Need clarification">?</abbr> =
+          unsure. <span className="deck-hint__coffee">☕</span> = coffee break
+          (not a point).
         </p>
-        <div className="deck">
-          {DECK.map((card) => (
+        <div className="deck deck--points">
+          {DECK_POINT_CARDS.map((card) => (
             <button
               key={card}
               type="button"
               className={`card-btn ${votePhase && picked === card ? "selected" : ""}`}
               disabled={!votePhase || readyState !== WebSocket.OPEN}
               onClick={() => sendVote(card)}
-              title={card === "?" ? "Unsure / need discussion" : undefined}
             >
               {card}
+            </button>
+          ))}
+        </div>
+        <div className="deck deck--specials" aria-label="Special cards">
+          {DECK_SPECIALS.map((card) => (
+            <button
+              key={card}
+              type="button"
+              className={`card-btn card-btn--special ${card === "coffee" ? "card-btn--coffee" : ""} ${votePhase && picked === card ? "selected" : ""}`}
+              disabled={!votePhase || readyState !== WebSocket.OPEN}
+              onClick={() => sendVote(card)}
+              title={
+                card === "?"
+                  ? "Unsure / need discussion"
+                  : "Need a coffee break"
+              }
+            >
+              {card === "coffee" ? "☕" : card}
             </button>
           ))}
         </div>
@@ -316,7 +349,7 @@ export function PokerSession({
           <div className="consensus">
             {mode != null ? (
               <p>
-                <strong>Mode:</strong> {mode}
+                <strong>Mode:</strong> {modeDisplay}
               </p>
             ) : null}
             {avg != null ? (
@@ -333,7 +366,9 @@ export function PokerSession({
                 <div key={p.id} className="revealed-card-wrap">
                   <div className="revealed-label muted">{p.name}</div>
                   <div className="revealed-card flip show">
-                    <span className="card-face">{v ?? "—"}</span>
+                    <span className="card-face">
+                      {v != null ? cardDisplayLabel(v) : "—"}
+                    </span>
                   </div>
                 </div>
               );

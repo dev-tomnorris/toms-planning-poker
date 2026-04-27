@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { PokerSession } from "../components/PokerSession";
+import { BootLine } from "../components/BootLine.tsx";
+import { PokerSession } from "../components/PokerSession.tsx";
 import {
   clearStoredDisplayName,
   getOrCreateParticipantId,
@@ -30,6 +31,7 @@ export function RoomPage() {
       <main className="page join">
         <header className="page-header">
           <h1 className="title">Join room</h1>
+          <BootLine line="> authenticate human… ok (jk). enter callsign." />
           <p className="lede muted">
             Choose how others see you at the table. No account required.
           </p>

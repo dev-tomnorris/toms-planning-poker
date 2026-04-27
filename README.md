@@ -1,6 +1,6 @@
 # Planning Poker
 
-Anonymous planning poker for your team: create a room, share the secret URL, pick a display name, and estimate with a Fibonacci deck plus `?`. Anyone in the room can **Reveal** (with a shared **3 → 2 → 1** countdown) or start a **New round**. No accounts.
+Anonymous planning poker for your team: create a room, share the secret URL, pick a display name, and estimate with a modified Fibonacci deck (through 89), `?` when unsure, or a coffee-break card. Retro terminal styling; anyone can **Reveal** (shared **3 → 2 → 1** countdown) or **New round**. No accounts.
 
 The UI and realtime server run in **one Node process**, so you only **deploy once** (e.g. Railway, Fly.io, Render).
 

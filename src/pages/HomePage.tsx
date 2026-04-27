@@ -1,5 +1,6 @@
 import { nanoid } from "nanoid";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { BootLine } from "../components/BootLine.tsx";
 
 export function HomePage() {
   const navigate = useNavigate();
@@ -8,9 +9,11 @@ export function HomePage() {
     <main className="page home">
       <header className="page-header">
         <h1 className="title">Planning Poker</h1>
+        <BootLine />
         <p className="lede">
-          No sign-in — create a room, share the link, estimate with your team.
-          Fibonacci deck plus &ldquo;?&rdquo; when you need more discussion.
+          No sign-in — create a room, share the secret link. Estimate with a
+          modified Fibonacci deck (through 89), &ldquo;?&rdquo; when unsure, or
+          ☕ for a coffee break.
         </p>
       </header>
       <div className="actions">
@@ -24,14 +27,9 @@ export function HomePage() {
           New room
         </button>
         <p className="hint">
-          You will get a secret URL to share only with your team.
+          You get a random room URL — share it only with your team.
         </p>
       </div>
-      <footer className="page-footer">
-        <Link to="/" className="muted">
-          Home
-        </Link>
-      </footer>
     </main>
   );
 }
