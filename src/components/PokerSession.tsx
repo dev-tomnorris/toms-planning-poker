@@ -1,0 +1,374 @@
+import confetti from "canvas-confetti";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Link } from "react-router-dom";
+import usePartySocket from "partysocket/react";
+import type { ClientState } from "../../shared/clientState.ts";
+import { DECK } from "../constants/deck.ts";
+import {
+  averageNumeric,
+  isUnanimous,
+  modeVote,
+} from "../lib/consensus.ts";
+import { hueFromId } from "../lib/hueFromId.ts";
+import { partyKitHost } from "../lib/partyKitHost.ts";
+import {
+  getSoundsEnabled,
+  playRevealPop,
+  playTick,
+  setSoundsEnabled,
+} from "../lib/sounds.ts";
+import {
+  applyTheme,
+  getStoredTheme,
+  setStoredTheme,
+} from "../lib/theme.ts";
+import type { Theme } from "../lib/theme.ts";
+
+type Props = {
+  roomId: string;
+  participantId: string;
+  displayName: string;
+  onChangeName: () => void;
+};
+
+export function PokerSession({
+  roomId,
+  participantId,
+  displayName,
+  onChangeName,
+}: Props) {
+  const host = partyKitHost();
+  const [state, setState] = useState<ClientState | null>(null);
+  /** Local selection while votes are hidden on the server */
+  const [picked, setPicked] = useState<string | null>(null);
+  const [storyDraft, setStoryDraft] = useState("");
+  const storyEditing = useRef(false);
+  const [theme, setTheme] = useState<Theme>(() => getStoredTheme());
+  const [soundsOn, setSoundsOn] = useState(() => getSoundsEnabled());
+
+  const prevPhase = useRef<string | undefined>(undefined);
+
+  const onServerMessage = useCallback((event: MessageEvent) => {
+    try {
+      const data = JSON.parse(event.data as string) as {
+        type: string;
+        state?: ClientState;
+      };
+      if (data.type === "state" && data.state) {
+        setState(data.state);
+        if (!storyEditing.current) {
+          setStoryDraft(data.state.storyTitle);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const socketOptions = useMemo(
+    () => ({
+      host,
+      room: roomId,
+      onMessage: onServerMessage,
+    }),
+    [host, roomId, onServerMessage],
+  );
+
+  const socket = usePartySocket(socketOptions);
+
+  const sendJoin = useCallback(() => {
+    socket.send(
+      JSON.stringify({
+        type: "join",
+        participantId,
+        name: displayName,
+      }),
+    );
+  }, [socket, participantId, displayName]);
+
+  useEffect(() => {
+    function onOpen() {
+      sendJoin();
+    }
+    socket.addEventListener("open", onOpen);
+    if (socket.readyState === WebSocket.OPEN) {
+      sendJoin();
+    }
+    return () => socket.removeEventListener("open", onOpen);
+  }, [socket, sendJoin]);
+
+  useEffect(() => {
+    applyTheme(theme);
+    setStoredTheme(theme);
+  }, [theme]);
+
+  useEffect(() => {
+    setSoundsEnabled(soundsOn);
+  }, [soundsOn]);
+
+  useEffect(() => {
+    if (state?.phase === "countdown" && state.countdown != null) {
+      playTick(480 + state.countdown * 55);
+    }
+  }, [state?.phase, state?.countdown]);
+
+  useEffect(() => {
+    const phase = state?.phase;
+    const votes = state?.votes;
+
+    if (
+      prevPhase.current !== "revealed" &&
+      phase === "revealed" &&
+      votes &&
+      isUnanimous(votes)
+    ) {
+      playRevealPop();
+      void confetti({
+        particleCount: 120,
+        spread: 86,
+        origin: { y: 0.65 },
+        ticks: 120,
+      });
+    }
+
+    if (phase === "voting" && prevPhase.current === "revealed") {
+      setPicked(null);
+    }
+
+    prevPhase.current = phase;
+  }, [state?.phase, state?.votes]);
+
+  const sendVote = (value: string) => {
+    setPicked(value);
+    socket.send(
+      JSON.stringify({
+        type: "vote",
+        participantId,
+        value,
+      }),
+    );
+  };
+
+  const sendReveal = () => {
+    socket.send(JSON.stringify({ type: "reveal", participantId }));
+  };
+
+  const sendNewRound = () => {
+    socket.send(JSON.stringify({ type: "new_round", participantId }));
+  };
+
+  const sendStory = (title: string) => {
+    socket.send(
+      JSON.stringify({
+        type: "set_story",
+        participantId,
+        title,
+      }),
+    );
+  };
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const votePhase = state?.phase === "voting";
+  const revealed = state?.phase === "revealed";
+  const countdown = state?.phase === "countdown";
+  const participants = state?.participants ?? [];
+  const activeParticipants = participants.filter((p) => p.connected);
+  const allVoted =
+    activeParticipants.length > 0 &&
+    activeParticipants.every((p) => p.hasVoted);
+
+  const mode =
+    revealed && state?.votes ? modeVote(state.votes) : null;
+  const avg =
+    revealed && state?.votes ? averageNumeric(state.votes) : null;
+
+  void roomId;
+
+  return (
+    <main className="page poker">
+      <header className="poker-toolbar">
+        <div className="toolbar-left">
+          <Link to="/" className="muted link-quiet">
+            ← Home
+          </Link>
+          <button type="button" className="btn ghost sm" onClick={copyLink}>
+            Copy link
+          </button>
+        </div>
+        <div className="toolbar-right">
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={soundsOn}
+              onChange={(e) => setSoundsOn(e.target.checked)}
+            />
+            <span>Sounds</span>
+          </label>
+          <button
+            type="button"
+            className="btn ghost sm"
+            onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+          >
+            {theme === "dark" ? "Light" : "Dark"}
+          </button>
+          <button type="button" className="btn ghost sm" onClick={onChangeName}>
+            Change name
+          </button>
+        </div>
+      </header>
+
+      <section className="story-panel">
+        <label className="field inline">
+          <span className="label">Story / ticket</span>
+          <input
+            className="input story-input"
+            placeholder="Optional title or ticket ID"
+            value={storyDraft}
+            disabled={!votePhase}
+            onFocus={() => {
+              storyEditing.current = true;
+            }}
+            onChange={(e) => setStoryDraft(e.target.value)}
+            onBlur={() => {
+              storyEditing.current = false;
+              if (!votePhase) return;
+              sendStory(storyDraft);
+            }}
+          />
+        </label>
+      </section>
+
+      <section className="presence">
+        <div className="presence-header">
+          <h2 className="section-title">Team</h2>
+          {allVoted && votePhase ? (
+            <span className="pill ok">Everyone voted</span>
+          ) : null}
+          <span
+            className={`pill ${socket.readyState === WebSocket.OPEN ? "ok" : "warn"}`}
+          >
+            {socket.readyState === WebSocket.OPEN ? "Live" : "Connecting…"}
+          </span>
+        </div>
+        <ul className="participant-list">
+          {participants.map((p) => (
+            <li key={p.id} className="participant">
+              <span
+                className="chip"
+                style={{
+                  background: `hsl(${hueFromId(p.id)} 55% 42%)`,
+                }}
+              />
+              <span className={p.connected ? "" : "muted"}>
+                {p.name}
+                {!p.connected ? " (away)" : ""}
+              </span>
+              {votePhase ? (
+                <span className="vote-hint">
+                  {p.hasVoted ? "Ready" : "Thinking…"}
+                </span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {countdown && state?.countdown != null ? (
+        <div className="countdown-overlay" aria-live="polite">
+          <span className="countdown-digit">{state.countdown}</span>
+        </div>
+      ) : null}
+
+      <section className="deck-section">
+        <h2 className="section-title">Your vote</h2>
+        <p className="deck-hint muted">
+          Pick a card. Others only see that you voted until reveal.&nbsp;
+          <abbr title="Need clarification or more discussion">?</abbr> means
+          unsure — use it freely.
+        </p>
+        <div className="deck">
+          {DECK.map((card) => (
+            <button
+              key={card}
+              type="button"
+              className={`card-btn ${votePhase && picked === card ? "selected" : ""}`}
+              disabled={!votePhase || socket.readyState !== WebSocket.OPEN}
+              onClick={() => sendVote(card)}
+              title={card === "?" ? "Unsure / need discussion" : undefined}
+            >
+              {card}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="actions-bar">
+        <button
+          type="button"
+          className="btn primary"
+          disabled={!votePhase || socket.readyState !== WebSocket.OPEN}
+          onClick={sendReveal}
+        >
+          Reveal
+        </button>
+        <button
+          type="button"
+          className="btn"
+          disabled={!revealed || socket.readyState !== WebSocket.OPEN}
+          onClick={sendNewRound}
+        >
+          New round
+        </button>
+      </section>
+
+      {revealed && state?.votes ? (
+        <section className="reveal-panel">
+          <h2 className="section-title">Results</h2>
+          <div className="consensus">
+            {mode != null ? (
+              <p>
+                <strong>Mode:</strong> {mode}
+              </p>
+            ) : null}
+            {avg != null ? (
+              <p>
+                <strong>Average (numeric):</strong>{" "}
+                {avg.toFixed(avg % 1 === 0 ? 0 : 1)}
+              </p>
+            ) : null}
+          </div>
+          <div className="revealed-cards">
+            {participants.map((p) => {
+              const v = state.votes?.[p.id];
+              return (
+                <div key={p.id} className="revealed-card-wrap">
+                  <div className="revealed-label muted">{p.name}</div>
+                  <div className="revealed-card flip show">
+                    <span className="card-face">{v ?? "—"}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+
+      {!state ? (
+        <p className="muted centered">Loading room…</p>
+      ) : null}
+    </main>
+  );
+}
